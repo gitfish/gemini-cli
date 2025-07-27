@@ -6,7 +6,7 @@
 
 import { setGlobalDispatcher, ProxyAgent } from 'undici';
 import {
-  DEFAULT_GEMINI_MODEL,
+  DEFAULT_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
 } from '../config/models.js';
 
@@ -23,12 +23,12 @@ export async function getEffectiveModel(
   currentConfiguredModel: string,
   proxy?: string,
 ): Promise<string> {
-  if (currentConfiguredModel !== DEFAULT_GEMINI_MODEL) {
+  if (currentConfiguredModel !== DEFAULT_MODEL) {
     // Only check if the user is trying to use the specific pro model we want to fallback from.
     return currentConfiguredModel;
   }
 
-  const modelToTest = DEFAULT_GEMINI_MODEL;
+  const modelToTest = DEFAULT_MODEL;
   const fallbackModel = DEFAULT_GEMINI_FLASH_MODEL;
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTest}:generateContent`;
   const body = JSON.stringify({

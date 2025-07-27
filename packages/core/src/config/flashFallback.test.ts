@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Config } from './config.js';
-import { DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_FLASH_MODEL } from './models.js';
+import { DEFAULT_MODEL, DEFAULT_GEMINI_FLASH_MODEL } from './models.js';
 
 describe('Flash Model Fallback Configuration', () => {
   let config: Config;
@@ -17,21 +17,21 @@ describe('Flash Model Fallback Configuration', () => {
       targetDir: '/test',
       debugMode: false,
       cwd: '/test',
-      model: DEFAULT_GEMINI_MODEL,
+      model: DEFAULT_MODEL,
     });
 
     // Initialize contentGeneratorConfig for testing
     (
       config as unknown as { contentGeneratorConfig: unknown }
     ).contentGeneratorConfig = {
-      model: DEFAULT_GEMINI_MODEL,
+      model: DEFAULT_MODEL,
       authType: 'oauth-personal',
     };
   });
 
   describe('setModel', () => {
     it('should update the model and mark as switched during session', () => {
-      expect(config.getModel()).toBe(DEFAULT_GEMINI_MODEL);
+      expect(config.getModel()).toBe(DEFAULT_MODEL);
       expect(config.isModelSwitchedDuringSession()).toBe(false);
 
       config.setModel(DEFAULT_GEMINI_FLASH_MODEL);
@@ -56,7 +56,7 @@ describe('Flash Model Fallback Configuration', () => {
         targetDir: '/test',
         debugMode: false,
         cwd: '/test',
-        model: DEFAULT_GEMINI_MODEL,
+        model: DEFAULT_MODEL,
       });
 
       // Should not crash when contentGeneratorConfig is undefined
@@ -117,7 +117,7 @@ describe('Flash Model Fallback Configuration', () => {
       config.resetModelToDefault();
 
       // Should be back to default with flag cleared
-      expect(config.getModel()).toBe(DEFAULT_GEMINI_MODEL);
+      expect(config.getModel()).toBe(DEFAULT_MODEL);
       expect(config.isModelSwitchedDuringSession()).toBe(false);
     });
 
@@ -128,7 +128,7 @@ describe('Flash Model Fallback Configuration', () => {
         targetDir: '/test',
         debugMode: false,
         cwd: '/test',
-        model: DEFAULT_GEMINI_MODEL,
+        model: DEFAULT_MODEL,
       });
 
       // Should not crash when contentGeneratorConfig is undefined

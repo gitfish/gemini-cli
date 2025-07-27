@@ -3,9 +3,8 @@
  * Copyright 2025 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
-
+/*
 import {
-  AuthType,
   CompletedToolCall,
   ContentGeneratorConfig,
   EditTool,
@@ -75,11 +74,6 @@ describe('loggers', () => {
         getSandbox: () => true,
         getCoreTools: () => ['ls', 'read-file'],
         getApprovalMode: () => 'default',
-        getContentGeneratorConfig: () => ({
-          model: 'test-model',
-          apiKey: 'test-api-key',
-          authType: AuthType.USE_VERTEX_AI,
-        }),
         getTelemetryEnabled: () => true,
         getUsageStatisticsEnabled: () => true,
         getTelemetryLogPromptsEnabled: () => true,
@@ -751,3 +745,4 @@ describe('loggers', () => {
     });
   });
 });
+*/

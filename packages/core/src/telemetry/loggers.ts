@@ -162,28 +162,6 @@ export function logApiRequest(config: Config, event: ApiRequestEvent): void {
   logger.emit(logRecord);
 }
 
-export function logFlashFallback(
-  config: Config,
-  event: FlashFallbackEvent,
-): void {
-  ClearcutLogger.getInstance(config)?.logFlashFallbackEvent(event);
-  if (!isTelemetrySdkInitialized()) return;
-
-  const attributes: LogAttributes = {
-    ...getCommonAttributes(config),
-    ...event,
-    'event.name': EVENT_FLASH_FALLBACK,
-    'event.timestamp': new Date().toISOString(),
-  };
-
-  const logger = logs.getLogger(SERVICE_NAME);
-  const logRecord: LogRecord = {
-    body: `Switching to flash as Fallback.`,
-    attributes,
-  };
-  logger.emit(logRecord);
-}
-
 export function logApiError(config: Config, event: ApiErrorEvent): void {
   const uiEvent = {
     ...event,

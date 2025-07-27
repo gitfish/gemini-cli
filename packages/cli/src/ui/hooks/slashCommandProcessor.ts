@@ -37,7 +37,6 @@ export const useSlashCommandProcessor = (
   setShowHelp: React.Dispatch<React.SetStateAction<boolean>>,
   onDebugMessage: (message: string) => void,
   openThemeDialog: () => void,
-  openAuthDialog: () => void,
   openEditorDialog: () => void,
   toggleCorgiMode: () => void,
   setQuittingMessages: (message: HistoryItem[]) => void,
@@ -80,9 +79,7 @@ export const useSlashCommandProcessor = (
           cliVersion: message.cliVersion,
           osVersion: message.osVersion,
           sandboxEnv: message.sandboxEnv,
-          modelVersion: message.modelVersion,
-          selectedAuthType: message.selectedAuthType,
-          gcpProject: message.gcpProject,
+          modelVersion: message.modelVersion
         };
       } else if (message.type === MessageType.STATS) {
         historyItemContent = {
@@ -265,9 +262,6 @@ export const useSlashCommandProcessor = (
                   case 'help':
                     setShowHelp(true);
                     return { type: 'handled' };
-                  case 'auth':
-                    openAuthDialog();
-                    return { type: 'handled' };
                   case 'theme':
                     openThemeDialog();
                     return { type: 'handled' };
@@ -338,7 +332,6 @@ export const useSlashCommandProcessor = (
       config,
       addItem,
       setShowHelp,
-      openAuthDialog,
       commands,
       commandContext,
       addMessage,

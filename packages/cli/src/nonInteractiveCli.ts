@@ -159,8 +159,7 @@ export async function runNonInteractive(
   } catch (error) {
     console.error(
       parseAndFormatApiError(
-        error,
-        config.getContentGeneratorConfig()?.authType,
+        error
       ),
     );
     process.exit(1);

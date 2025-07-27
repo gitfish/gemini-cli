@@ -23,7 +23,6 @@ import {
   GitService,
   EditorType,
   ThoughtSummary,
-  UnauthorizedError,
   UserPromptEvent,
   DEFAULT_GEMINI_FLASH_MODEL,
 } from '@google/gemini-cli-core';
@@ -90,7 +89,6 @@ export const useGeminiStream = (
   ) => Promise<SlashCommandProcessorResult | false>,
   shellModeActive: boolean,
   getPreferredEditor: () => EditorType | undefined,
-  onAuthError: () => void,
   performMemoryRefresh: () => Promise<void>,
   modelSwitchedFromQuotaError: boolean,
   setModelSwitchedFromQuotaError: React.Dispatch<React.SetStateAction<boolean>>,
@@ -229,7 +227,6 @@ export const useGeminiStream = (
           new UserPromptEvent(
             trimmedQuery.length,
             prompt_id,
-            config.getContentGeneratorConfig()?.authType,
             trimmedQuery,
           ),
         );
@@ -428,11 +425,7 @@ export const useGeminiStream = (
         {
           type: MessageType.ERROR,
           text: parseAndFormatApiError(
-            eventValue.error,
-            config.getContentGeneratorConfig()?.authType,
-            undefined,
-            config.getModel(),
-            DEFAULT_GEMINI_FLASH_MODEL,
+            eventValue.error
           ),
         },
         userMessageTimestamp,
@@ -667,18 +660,12 @@ export const useGeminiStream = (
           handleLoopDetectedEvent();
         }
       } catch (error: unknown) {
-        if (error instanceof UnauthorizedError) {
-          onAuthError();
-        } else if (!isNodeError(error) || error.name !== 'AbortError') {
+        if (!isNodeError(error) || error.name !== 'AbortError') {
           addItem(
             {
               type: MessageType.ERROR,
               text: parseAndFormatApiError(
-                getErrorMessage(error) || 'Unknown error',
-                config.getContentGeneratorConfig()?.authType,
-                undefined,
-                config.getModel(),
-                DEFAULT_GEMINI_FLASH_MODEL,
+                getErrorMessage(error) || 'Unknown error'
               ),
             },
             userMessageTimestamp,
@@ -699,7 +686,6 @@ export const useGeminiStream = (
       setPendingHistoryItem,
       setInitError,
       geminiClient,
-      onAuthError,
       config,
       startNewPrompt,
       getPromptCount,

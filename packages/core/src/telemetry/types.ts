@@ -8,7 +8,6 @@ import { GenerateContentResponseUsageMetadata } from '@google/genai';
 import { Config } from '../config/config.js';
 import { CompletedToolCall } from '../core/coreToolScheduler.js';
 import { ToolConfirmationOutcome } from '../tools/tools.js';
-import { AuthType } from '../core/contentGenerator.js';
 
 export enum ToolCallDecision {
   ACCEPT = 'accept',
@@ -50,15 +49,10 @@ export class StartSessionEvent {
   file_filtering_respect_git_ignore: boolean;
 
   constructor(config: Config) {
-    const generatorConfig = config.getContentGeneratorConfig();
     const mcpServers = config.getMcpServers();
 
     let useGemini = false;
     let useVertex = false;
-    if (generatorConfig && generatorConfig.authType) {
-      useGemini = generatorConfig.authType === AuthType.USE_GEMINI;
-      useVertex = generatorConfig.authType === AuthType.USE_VERTEX_AI;
-    }
 
     this['event.name'] = 'cli_config';
     this.model = config.getModel();
@@ -96,20 +90,17 @@ export class UserPromptEvent {
   'event.timestamp': string; // ISO 8601
   prompt_length: number;
   prompt_id: string;
-  auth_type?: string;
   prompt?: string;
 
   constructor(
     prompt_length: number,
     prompt_Id: string,
-    auth_type?: string,
     prompt?: string,
   ) {
     this['event.name'] = 'user_prompt';
     this['event.timestamp'] = new Date().toISOString();
     this.prompt_length = prompt_length;
     this.prompt_id = prompt_Id;
-    this.auth_type = auth_type;
     this.prompt = prompt;
   }
 }
@@ -205,13 +196,11 @@ export class ApiResponseEvent {
   total_token_count: number;
   response_text?: string;
   prompt_id: string;
-  auth_type?: string;
 
   constructor(
     model: string,
     duration_ms: number,
     prompt_id: string,
-    auth_type?: string,
     usage_data?: GenerateContentResponseUsageMetadata,
     response_text?: string,
     error?: string,
@@ -230,7 +219,6 @@ export class ApiResponseEvent {
     this.response_text = response_text;
     this.error = error;
     this.prompt_id = prompt_id;
-    this.auth_type = auth_type;
   }
 }
 

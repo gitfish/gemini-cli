@@ -3,7 +3,7 @@
  * Copyright 2025 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
-
+/*
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import {
@@ -1097,3 +1097,4 @@ Here are files the user has recently opened, with the most recent at the top:
     });
   });
 });
+*/

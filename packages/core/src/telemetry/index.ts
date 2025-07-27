@@ -25,7 +25,6 @@ export {
   logApiRequest,
   logApiError,
   logApiResponse,
-  logFlashFallback,
 } from './loggers.js';
 export {
   StartSessionEvent,

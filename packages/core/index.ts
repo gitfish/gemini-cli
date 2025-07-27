@@ -6,7 +6,7 @@
 
 export * from './src/index.js';
 export {
-  DEFAULT_GEMINI_MODEL,
+  DEFAULT_MODEL as DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_EMBEDDING_MODEL,
 } from './src/config/models.js';

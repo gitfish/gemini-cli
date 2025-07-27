@@ -7,9 +7,7 @@
 import * as path from 'node:path';
 import process from 'node:process';
 import {
-  AuthType,
-  ContentGeneratorConfig,
-  createContentGeneratorConfig,
+  ContentGeneratorConfig
 } from '../core/contentGenerator.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
 import { LSTool } from '../tools/ls.js';
@@ -304,19 +302,6 @@ export class Config {
       await this.getGitService();
     }
     this.toolRegistry = await this.createToolRegistry();
-  }
-
-  async refreshAuth(authMethod: AuthType) {
-    this.contentGeneratorConfig = createContentGeneratorConfig(
-      this,
-      authMethod,
-    );
-
-    this.geminiClient = new GeminiClient(this);
-    await this.geminiClient.initialize(this.contentGeneratorConfig);
-
-    // Reset the session flag since we're explicitly changing auth and using default model
-    this.modelSwitchedDuringSession = false;
   }
 
   getSessionId(): string {

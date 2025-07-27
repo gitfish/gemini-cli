@@ -7,7 +7,6 @@
 import { WritableStream, ReadableStream } from 'node:stream/web';
 
 import {
-  AuthType,
   Config,
   GeminiChat,
   ToolRegistry,
@@ -16,7 +15,6 @@ import {
   convertToFunctionResponse,
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
-  clearCachedCredentialFile,
   isNodeError,
   getErrorMessage,
   isWithinRoot,
@@ -59,25 +57,11 @@ class GeminiAgent implements Agent {
 
   async initialize(_: acp.InitializeParams): Promise<acp.InitializeResponse> {
     let isAuthenticated = false;
-    if (this.settings.merged.selectedAuthType) {
-      try {
-        await this.config.refreshAuth(this.settings.merged.selectedAuthType);
-        isAuthenticated = true;
-      } catch (error) {
-        console.error('Failed to refresh auth:', error);
-      }
-    }
     return { protocolVersion: acp.LATEST_PROTOCOL_VERSION, isAuthenticated };
   }
 
   async authenticate(): Promise<void> {
-    await clearCachedCredentialFile();
-    await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
-    this.settings.setValue(
-      SettingScope.User,
-      'selectedAuthType',
-      AuthType.LOGIN_WITH_GOOGLE,
-    );
+    // does nothing - we don't authenticate
   }
 
   async cancelSendMessage(): Promise<void> {

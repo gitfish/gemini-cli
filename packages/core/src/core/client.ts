@@ -22,7 +22,6 @@ import {
   ChatCompressionInfo,
 } from './turn.js';
 import { Config } from '../config/config.js';
-import { UserTierId } from '../code_assist/types.js';
 import { getCoreSystemPrompt, getCompressionPrompt } from './prompts.js';
 import { ReadManyFilesTool } from '../tools/read-many-files.js';
 import { getResponseText } from '../utils/generateContentResponseUtilities.js';
@@ -34,7 +33,6 @@ import { getErrorMessage } from '../utils/errors.js';
 import { isFunctionResponse } from '../utils/messageInspectors.js';
 import { tokenLimit } from './tokenLimits.js';
 import {
-  AuthType,
   ContentGenerator,
   ContentGeneratorConfig,
   createContentGenerator,
@@ -46,8 +44,8 @@ import { ideContext } from '../services/ideContext.js';
 import { logFlashDecidedToContinue } from '../telemetry/loggers.js';
 import { FlashDecidedToContinueEvent } from '../telemetry/types.js';
 
-function isThinkingSupported(model: string) {
-  if (model.startsWith('gemini-2.5')) return true;
+function isThinkingSupported(_model: string) {
+  // TODO
   return false;
 }
 
@@ -119,9 +117,7 @@ export class GeminiClient {
 
   async initialize(contentGeneratorConfig: ContentGeneratorConfig) {
     this.contentGenerator = await createContentGenerator(
-      contentGeneratorConfig,
-      this.config,
-      this.config.getSessionId(),
+      contentGeneratorConfig
     );
     this.chat = await this.startChat();
   }
@@ -133,8 +129,8 @@ export class GeminiClient {
     return this.contentGenerator;
   }
 
-  getUserTier(): UserTierId | undefined {
-    return this.contentGenerator?.userTier;
+  getUserTier() {
+    return undefined
   }
 
   async addHistory(content: Content) {
@@ -438,11 +434,7 @@ export class GeminiClient {
           contents,
         });
 
-      const result = await retryWithBackoff(apiCall, {
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
-        authType: this.config.getContentGeneratorConfig()?.authType,
-      });
+      const result = await retryWithBackoff(apiCall);
 
       const text = getResponseText(result);
       if (!text) {
@@ -527,11 +519,7 @@ export class GeminiClient {
           contents,
         });
 
-      const result = await retryWithBackoff(apiCall, {
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
-        authType: this.config.getContentGeneratorConfig()?.authType,
-      });
+      const result = await retryWithBackoff(apiCall);
       return result;
     } catch (error: unknown) {
       if (abortSignal.aborted) {
@@ -675,51 +663,5 @@ export class GeminiClient {
       originalTokenCount,
       newTokenCount,
     };
-  }
-
-  /**
-   * Handles falling back to Flash model when persistent 429 errors occur for OAuth users.
-   * Uses a fallback handler if provided by the config; otherwise, returns null.
-   */
-  private async handleFlashFallback(
-    authType?: string,
-    error?: unknown,
-  ): Promise<string | null> {
-    // Only handle fallback for OAuth users
-    if (authType !== AuthType.LOGIN_WITH_GOOGLE) {
-      return null;
-    }
-
-    const currentModel = this.config.getModel();
-    const fallbackModel = DEFAULT_GEMINI_FLASH_MODEL;
-
-    // Don't fallback if already using Flash model
-    if (currentModel === fallbackModel) {
-      return null;
-    }
-
-    // Check if config has a fallback handler (set by CLI package)
-    const fallbackHandler = this.config.flashFallbackHandler;
-    if (typeof fallbackHandler === 'function') {
-      try {
-        const accepted = await fallbackHandler(
-          currentModel,
-          fallbackModel,
-          error,
-        );
-        if (accepted !== false && accepted !== null) {
-          this.config.setModel(fallbackModel);
-          return fallbackModel;
-        }
-        // Check if the model was switched manually in the handler
-        if (this.config.getModel() === fallbackModel) {
-          return null; // Model was switched but don't continue with current prompt
-        }
-      } catch (error) {
-        console.warn('Flash fallback handler failed:', error);
-      }
-    }
-
-    return null;
   }
 }

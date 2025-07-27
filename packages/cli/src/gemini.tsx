@@ -34,12 +34,8 @@ import {
   WriteFileTool,
   sessionId,
   logUserPrompt,
-  AuthType,
-  getOauthClient,
 } from '@google/gemini-cli-core';
-import { validateAuthMethod } from './config/auth.js';
 import { setMaxSizedBoxDebugging } from './ui/components/shared/MaxSizedBox.js';
-import { validateNonInteractiveAuth } from './validateNonInterActiveAuth.js';
 
 function getNodeMemoryArgs(config: Config): string[] {
   const totalMemoryMB = os.totalmem() / (1024 * 1024);
@@ -127,17 +123,6 @@ export async function main() {
     process.exit(0);
   }
 
-  // Set a default auth type if one isn't set.
-  if (!settings.merged.selectedAuthType) {
-    if (process.env.CLOUD_SHELL === 'true') {
-      settings.setValue(
-        SettingScope.User,
-        'selectedAuthType',
-        AuthType.CLOUD_SHELL,
-      );
-    }
-  }
-
   setMaxSizedBoxDebugging(config.getDebugMode());
 
   await config.initialize();
@@ -160,19 +145,6 @@ export async function main() {
       : [];
     const sandboxConfig = config.getSandbox();
     if (sandboxConfig) {
-      if (settings.merged.selectedAuthType) {
-        // Validate authentication here because the sandbox will interfere with the Oauth2 web redirect.
-        try {
-          const err = validateAuthMethod(settings.merged.selectedAuthType);
-          if (err) {
-            throw new Error(err);
-          }
-          await config.refreshAuth(settings.merged.selectedAuthType);
-        } catch (err) {
-          console.error('Error authenticating:', err);
-          process.exit(1);
-        }
-      }
       await start_sandbox(sandboxConfig, memoryArgs);
       process.exit(0);
     } else {
@@ -183,14 +155,6 @@ export async function main() {
         process.exit(0);
       }
     }
-  }
-
-  if (
-    settings.merged.selectedAuthType === AuthType.LOGIN_WITH_GOOGLE &&
-    config.isBrowserLaunchSuppressed()
-  ) {
-    // Do oauth before app renders to make copying the link possible.
-    await getOauthClient(settings.merged.selectedAuthType, config);
   }
 
   if (config.getExperimentalAcp()) {
@@ -241,7 +205,6 @@ export async function main() {
     'event.timestamp': new Date().toISOString(),
     prompt: input,
     prompt_id,
-    auth_type: config.getContentGeneratorConfig()?.authType,
     prompt_length: input.length,
   });
 
@@ -320,8 +283,5 @@ async function loadNonInteractiveConfig(
     await finalConfig.initialize();
   }
 
-  return await validateNonInteractiveAuth(
-    settings.merged.selectedAuthType,
-    finalConfig,
-  );
+  return finalConfig;
 }
