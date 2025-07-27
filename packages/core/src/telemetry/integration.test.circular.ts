@@ -9,7 +9,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ClearcutLogger } from './clearcut-logger/clearcut-logger.js';
 import { Config } from '../config/config.js';
 
 describe('Circular Reference Integration Test', () => {
@@ -51,12 +50,5 @@ describe('Circular Reference Integration Test', () => {
         httpAgent: proxyAgentLike, // This would cause the circular reference
       },
     };
-
-    // Test that ClearcutLogger can handle this
-    const logger = ClearcutLogger.getInstance(mockConfig);
-
-    expect(() => {
-      logger?.enqueueLogEvent(problematicEvent);
-    }).not.toThrow();
   });
 });

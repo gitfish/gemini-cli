@@ -38,10 +38,8 @@ import {
   StartSessionEvent,
 } from '../telemetry/index.js';
 import {
-  DEFAULT_GEMINI_EMBEDDING_MODEL,
-  DEFAULT_GEMINI_FLASH_MODEL,
+  DEFAULT_MODEL
 } from './models.js';
-import { ClearcutLogger } from '../telemetry/clearcut-logger/clearcut-logger.js';
 import { shouldAttemptBrowserLaunch } from '../utils/browser.js';
 import { MCPOAuthConfig } from '../mcp/oauth-provider.js';
 
@@ -230,7 +228,7 @@ export class Config {
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
     this.embeddingModel =
-      params.embeddingModel ?? DEFAULT_GEMINI_EMBEDDING_MODEL;
+      params.embeddingModel ?? DEFAULT_MODEL;
     this.sandbox = params.sandbox;
     this.targetDir = path.resolve(params.targetDir);
     this.debugMode = params.debugMode;
@@ -283,14 +281,6 @@ export class Config {
 
     if (this.telemetrySettings.enabled) {
       initializeTelemetry(this);
-    }
-
-    if (this.getUsageStatisticsEnabled()) {
-      ClearcutLogger.getInstance(this)?.logStartSessionEvent(
-        new StartSessionEvent(this),
-      );
-    } else {
-      console.log('Data collection is disabled.');
     }
   }
 
@@ -623,4 +613,4 @@ export class Config {
   }
 }
 // Export model constants for use in CLI
-export { DEFAULT_GEMINI_FLASH_MODEL };
+export { DEFAULT_MODEL };

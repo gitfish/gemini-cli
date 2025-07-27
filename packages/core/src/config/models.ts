@@ -5,5 +5,3 @@
  */
 
 export const DEFAULT_MODEL = 'qwen2.5-7b-instruct-1m';
-export const DEFAULT_GEMINI_FLASH_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';

@@ -59,7 +59,7 @@ export async function createContentGenerator(
   async function* createGenerateContentStream(
     request: GenerateContentParameters,
   ) {
-    console.log('-- Create Generate Content Stream', request);
+    console.log('-- Create Generate Content Stream', JSON.stringify(request, null, 2));
     const res: GenerateContentResponse = {
       codeExecutionResult: 'streamed result',
       data: 'streamed data',
@@ -73,7 +73,7 @@ export async function createContentGenerator(
   // TODO: our lm studio content generator
   return {
     countTokens: async (request) => {
-      console.log('-- Count Tokens Request', request);
+      console.log('-- Count Tokens Request', JSON.stringify(request, null, 2));
       return {
         cachedContentTokenCount: 0,
         totalTokens: 0

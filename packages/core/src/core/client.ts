@@ -38,7 +38,7 @@ import {
   createContentGenerator,
 } from './contentGenerator.js';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
-import { DEFAULT_GEMINI_FLASH_MODEL } from '../config/models.js';
+import { DEFAULT_MODEL } from '../config/models.js';
 import { LoopDetectionService } from '../services/loopDetectionService.js';
 import { ideContext } from '../services/ideContext.js';
 import { logFlashDecidedToContinue } from '../telemetry/loggers.js';
@@ -112,6 +112,7 @@ export class GeminiClient {
     }
 
     this.embeddingModel = config.getEmbeddingModel();
+
     this.loopDetector = new LoopDetectionService(config);
   }
 
@@ -412,7 +413,7 @@ export class GeminiClient {
   ): Promise<Record<string, unknown>> {
     // Use current model from config instead of hardcoded Flash model
     const modelToUse =
-      model || this.config.getModel() || DEFAULT_GEMINI_FLASH_MODEL;
+      model || this.config.getModel() || DEFAULT_MODEL;
     try {
       const userMemory = this.config.getUserMemory();
       const systemInstruction = getCoreSystemPrompt(userMemory);

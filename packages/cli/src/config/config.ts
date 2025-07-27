@@ -13,14 +13,13 @@ import {
   setGeminiMdFilename as setServerGeminiMdFilename,
   getCurrentGeminiMdFilename,
   ApprovalMode,
-  DEFAULT_GEMINI_MODEL,
-  DEFAULT_GEMINI_EMBEDDING_MODEL,
   DEFAULT_MEMORY_FILE_FILTERING_OPTIONS,
   FileDiscoveryService,
   TelemetryTarget,
   FileFilteringOptions,
   MCPServerConfig,
   IDE_SERVER_NAME,
+  DEFAULT_MODEL,
 } from '@google/gemini-cli-core';
 import { Settings } from './settings.js';
 
@@ -74,7 +73,7 @@ export async function parseArguments(): Promise<CliArgs> {
       alias: 'm',
       type: 'string',
       description: `Model`,
-      default: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+      default: process.env.GEMINI_MODEL || DEFAULT_MODEL,
     })
     .option('prompt', {
       alias: 'p',
@@ -382,7 +381,7 @@ export async function loadCliConfig(
 
   return new Config({
     sessionId,
-    embeddingModel: DEFAULT_GEMINI_EMBEDDING_MODEL,
+    embeddingModel: DEFAULT_MODEL,
     sandbox: sandboxConfig,
     targetDir: process.cwd(),
     debugMode,
