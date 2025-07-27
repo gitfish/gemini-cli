@@ -221,7 +221,6 @@ export class Config {
     name: string;
     extensionName: string;
   }>;
-  flashFallbackHandler?: FlashFallbackHandler;
   private quotaErrorOccurred: boolean = false;
   private readonly summarizeToolOutput:
     | Record<string, SummarizeToolOutputSettings>
@@ -302,6 +301,9 @@ export class Config {
       await this.getGitService();
     }
     this.toolRegistry = await this.createToolRegistry();
+
+    this.geminiClient = new GeminiClient(this);
+    await this.geminiClient.initialize(this.contentGeneratorConfig);
   }
 
   getSessionId(): string {
@@ -331,11 +333,8 @@ export class Config {
     if (this.contentGeneratorConfig) {
       this.contentGeneratorConfig.model = this.model; // Reset to the original default model
       this.modelSwitchedDuringSession = false;
-    }
-  }
-
-  setFlashFallbackHandler(handler: FlashFallbackHandler): void {
-    this.flashFallbackHandler = handler;
+   
+   }
   }
 
   getMaxSessionTurns(): number {
