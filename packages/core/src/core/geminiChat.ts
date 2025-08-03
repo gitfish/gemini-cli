@@ -27,10 +27,6 @@ import {
   logApiError,
 } from '../telemetry/loggers.js';
 import {
-  getStructuredResponse,
-  getStructuredResponseFromParts,
-} from '../utils/generateContentResponseUtilities.js';
-import {
   ApiErrorEvent,
   ApiRequestEvent,
   ApiResponseEvent,
@@ -142,11 +138,7 @@ export class GeminiChat {
   }
 
   private _getRequestTextFromContents(contents: Content[]): string {
-    return contents
-      .flatMap((content) => content.parts ?? [])
-      .map((part) => part.text)
-      .filter(Boolean)
-      .join('');
+    return JSON.stringify(contents);
   }
 
   private async _logApiRequest(
@@ -236,12 +228,14 @@ export class GeminiChat {
       const apiCall = () => {
         const modelToUse = this.config.getModel() || DEFAULT_MODEL;
 
-        // Prevent Flash model calls immediately after quota error
-        return this.contentGenerator.generateContent({
-          model: modelToUse,
-          contents: requestContents,
-          config: { ...this.generationConfig, ...params.config },
-        });
+        return this.contentGenerator.generateContent(
+          {
+            model: modelToUse,
+            contents: requestContents,
+            config: { ...this.generationConfig, ...params.config },
+          },
+          prompt_id,
+        );
       };
 
       response = await apiCall();
@@ -250,7 +244,7 @@ export class GeminiChat {
         durationMs,
         prompt_id,
         response.usageMetadata,
-        getStructuredResponse(response),
+        JSON.stringify(response),
       );
 
       this.sendPromise = (async () => {
@@ -333,11 +327,14 @@ export class GeminiChat {
           );
         }
 
-        return this.contentGenerator.generateContentStream({
-          model: modelToUse,
-          contents: requestContents,
-          config: { ...this.generationConfig, ...params.config },
-        });
+        return this.contentGenerator.generateContentStream(
+          {
+            model: modelToUse,
+            contents: requestContents,
+            config: { ...this.generationConfig, ...params.config },
+          },
+          prompt_id,
+        );
       };
 
       const streamResponse = await apiCall();
@@ -471,12 +468,11 @@ export class GeminiChat {
           allParts.push(...content.parts);
         }
       }
-      const fullText = getStructuredResponseFromParts(allParts);
       await this._logApiResponse(
         durationMs,
         prompt_id,
         this.getFinalUsageMetadata(chunks),
-        fullText,
+        JSON.stringify(chunks),
       );
     }
     this.recordHistory(inputContent, outputContent);

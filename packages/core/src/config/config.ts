@@ -9,6 +9,7 @@ import process from 'node:process';
 import {
   ContentGeneratorConfig
 } from '../core/contentGenerator.js';
+import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
 import { LSTool } from '../tools/ls.js';
 import { ReadFileTool } from '../tools/read-file.js';
@@ -28,7 +29,6 @@ import { WebSearchTool } from '../tools/web-search.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { GitService } from '../services/gitService.js';
-import { loadServerHierarchicalMemory } from '../utils/memoryDiscovery.js';
 import { getProjectTempDir } from '../utils/paths.js';
 import {
   initializeTelemetry,
@@ -42,9 +42,12 @@ import {
 } from './models.js';
 import { shouldAttemptBrowserLaunch } from '../utils/browser.js';
 import { MCPOAuthConfig } from '../mcp/oauth-provider.js';
+import { IdeClient } from '../ide/ide-client.js';
+import type { Content } from '@google/genai';
 
 // Re-export OAuth config type
 export type { MCPOAuthConfig };
+import { WorkspaceContext } from '../utils/workspaceContext.js';
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -69,12 +72,14 @@ export interface TelemetrySettings {
   target?: TelemetryTarget;
   otlpEndpoint?: string;
   logPrompts?: boolean;
+  outfile?: string;
 }
 
 export interface GeminiCLIExtension {
   name: string;
   version: string;
   isActive: boolean;
+  path: string;
 }
 export interface FileFilteringOptions {
   respectGitIgnore: boolean;
@@ -114,7 +119,13 @@ export class MCPServerConfig {
     readonly extensionName?: string,
     // OAuth configuration
     readonly oauth?: MCPOAuthConfig,
+    readonly authProviderType?: AuthProviderType,
   ) {}
+}
+
+export enum AuthProviderType {
+  DYNAMIC_DISCOVERY = 'dynamic_discovery',
+  GOOGLE_CREDENTIALS = 'google_credentials',
 }
 
 export interface SandboxConfig {
@@ -159,6 +170,7 @@ export interface ConfigParameters {
   proxy?: string;
   cwd: string;
   fileDiscoveryService?: FileDiscoveryService;
+  includeDirectories?: string[];
   bugCommand?: BugCommandSettings;
   model: string;
   extensionContextFilePaths?: string[];
@@ -169,16 +181,20 @@ export interface ConfigParameters {
   blockedMcpServers?: Array<{ name: string; extensionName: string }>;
   noBrowser?: boolean;
   summarizeToolOutput?: Record<string, SummarizeToolOutputSettings>;
+  ideModeFeature?: boolean;
   ideMode?: boolean;
+  ideClient: IdeClient;
 }
 
 export class Config {
   private toolRegistry!: ToolRegistry;
+  private promptRegistry!: PromptRegistry;
   private readonly sessionId: string;
   private contentGeneratorConfig!: ContentGeneratorConfig;
   private readonly embeddingModel: string;
   private readonly sandbox: SandboxConfig | undefined;
   private readonly targetDir: string;
+  private workspaceContext: WorkspaceContext;
   private readonly debugMode: boolean;
   private readonly question: string | undefined;
   private readonly fullContext: boolean;
@@ -210,8 +226,10 @@ export class Config {
   private readonly model: string;
   private readonly extensionContextFilePaths: string[];
   private readonly noBrowser: boolean;
-  private readonly ideMode: boolean;
-  private modelSwitchedDuringSession: boolean = false;
+  private readonly ideModeFeature: boolean;
+  private ideMode: boolean;
+  private ideClient: IdeClient;
+  private inFallbackMode = false;
   private readonly maxSessionTurns: number;
   private readonly listExtensions: boolean;
   private readonly _extensions: GeminiCLIExtension[];
@@ -231,6 +249,10 @@ export class Config {
       params.embeddingModel ?? DEFAULT_MODEL;
     this.sandbox = params.sandbox;
     this.targetDir = path.resolve(params.targetDir);
+    this.workspaceContext = new WorkspaceContext(
+      this.targetDir,
+      params.includeDirectories ?? [],
+    );
     this.debugMode = params.debugMode;
     this.question = params.question;
     this.fullContext = params.fullContext ?? false;
@@ -250,6 +272,7 @@ export class Config {
       target: params.telemetry?.target ?? DEFAULT_TELEMETRY_TARGET,
       otlpEndpoint: params.telemetry?.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT,
       logPrompts: params.telemetry?.logPrompts ?? true,
+      outfile: params.telemetry?.outfile,
     };
     this.usageStatisticsEnabled = params.usageStatisticsEnabled ?? true;
 
@@ -273,7 +296,9 @@ export class Config {
     this._blockedMcpServers = params.blockedMcpServers ?? [];
     this.noBrowser = params.noBrowser ?? false;
     this.summarizeToolOutput = params.summarizeToolOutput;
-    this.ideMode = params.ideMode ?? false;
+    this.ideModeFeature = params.ideModeFeature ?? false;
+    this.ideMode = params.ideMode ?? true;
+    this.ideClient = params.ideClient;
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);
@@ -290,6 +315,7 @@ export class Config {
     if (this.getCheckpointingEnabled()) {
       await this.getGitService();
     }
+    this.promptRegistry = new PromptRegistry();
     this.toolRegistry = await this.createToolRegistry();
 
     this.geminiClient = new GeminiClient(this);
@@ -311,12 +337,11 @@ export class Config {
   setModel(newModel: string): void {
     if (this.contentGeneratorConfig) {
       this.contentGeneratorConfig.model = newModel;
-      this.modelSwitchedDuringSession = true;
     }
   }
 
-  isModelSwitchedDuringSession(): boolean {
-    return this.modelSwitchedDuringSession;
+  isInFallbackMode(): boolean {
+    return this.inFallbackMode;
   }
 
   resetModelToDefault(): void {
@@ -347,6 +372,17 @@ export class Config {
     return this.sandbox;
   }
 
+  isRestrictiveSandbox(): boolean {
+    const sandboxConfig = this.getSandbox();
+    const seatbeltProfile = process.env.SEATBELT_PROFILE;
+    return (
+      !!sandboxConfig &&
+      sandboxConfig.command === 'sandbox-exec' &&
+      !!seatbeltProfile &&
+      seatbeltProfile.startsWith('restrictive-')
+    );
+  }
+
   getTargetDir(): string {
     return this.targetDir;
   }
@@ -355,8 +391,16 @@ export class Config {
     return this.targetDir;
   }
 
+  getWorkspaceContext(): WorkspaceContext {
+    return this.workspaceContext;
+  }
+
   getToolRegistry(): Promise<ToolRegistry> {
     return Promise.resolve(this.toolRegistry);
+  }
+
+  getPromptRegistry(): PromptRegistry {
+    return this.promptRegistry;
   }
 
   getDebugMode(): boolean {
@@ -440,6 +484,10 @@ export class Config {
 
   getTelemetryTarget(): TelemetryTarget {
     return this.telemetrySettings.target ?? DEFAULT_TELEMETRY_TARGET;
+  }
+
+  getTelemetryOutfile(): string | undefined {
+    return this.telemetrySettings.outfile;
   }
 
   getGeminiClient(): GeminiClient {
@@ -533,8 +581,28 @@ export class Config {
     return this.summarizeToolOutput;
   }
 
+  getIdeModeFeature(): boolean {
+    return this.ideModeFeature;
+  }
+
+  getIdeClient(): IdeClient {
+    return this.ideClient;
+  }
+
   getIdeMode(): boolean {
     return this.ideMode;
+  }
+
+  setIdeMode(value: boolean): void {
+    this.ideMode = value;
+  }
+
+  setIdeClientDisconnected(): void {
+    this.ideClient.setDisconnected();
+  }
+
+  setIdeClientConnected(): void {
+    this.ideClient.reconnect(this.ideMode && this.ideModeFeature);
   }
 
   async getGitService(): Promise<GitService> {
@@ -543,21 +611,6 @@ export class Config {
       await this.gitService.initialize();
     }
     return this.gitService;
-  }
-
-  async refreshMemory(): Promise<{ memoryContent: string; fileCount: number }> {
-    const { memoryContent, fileCount } = await loadServerHierarchicalMemory(
-      this.getWorkingDir(),
-      this.getDebugMode(),
-      this.getFileService(),
-      this.getExtensionContextFilePaths(),
-      this.getFileFilteringOptions(),
-    );
-
-    this.setUserMemory(memoryContent);
-    this.setGeminiMdFileCount(fileCount);
-
-    return { memoryContent, fileCount };
   }
 
   async createToolRegistry(): Promise<ToolRegistry> {
@@ -608,7 +661,7 @@ export class Config {
     registerCoreTool(MemoryTool);
     registerCoreTool(WebSearchTool, this);
 
-    await registry.discoverTools();
+    await registry.discoverAllTools();
     return registry;
   }
 }
