@@ -56,16 +56,30 @@ export async function createContentGenerator(
   config: ContentGeneratorConfig
 ): Promise<ContentGenerator> {
 
+  console.log('-- Create Content Generator with config:', config);
+
   async function* createGenerateContentStream(
     request: GenerateContentParameters,
   ) {
-    console.log('-- Create Generate Content Stream', JSON.stringify(request, null, 2));
+    console.log('-- Create Generate Content Stream');
     const res: GenerateContentResponse = {
       codeExecutionResult: 'streamed result',
       data: 'streamed data',
       executableCode: 'streamed executable code',
       functionCalls: [],
-      text: 'streamed text'
+      text: 'This is a streamed response part.',
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: 'This is a streamed response part.',
+                thought: false,
+              },
+            ],
+          }
+        }
+      ]
     };
     yield res;
   }
@@ -73,20 +87,20 @@ export async function createContentGenerator(
   // TODO: our lm studio content generator
   return {
     countTokens: async (request) => {
-      console.log('-- Count Tokens Request', JSON.stringify(request, null, 2));
+      console.log('-- Count Tokens');
       return {
         cachedContentTokenCount: 0,
-        totalTokens: 0
+        totalTokens: 6
       };
     },
     embedContent: async (params) => {
-      console.log('-- Embed Content', params);
+      console.log('-- Embed Content');
       return {
 
       };
     },
     generateContent: async (params) => {
-      console.log('-- Generate Content', params);
+      console.log('-- Generate Content');
       return {
         codeExecutionResult: 'yep',
         data: 'data',
@@ -96,7 +110,6 @@ export async function createContentGenerator(
       }
     },
     generateContentStream: async (request) => {
-      console.log('-- Generate Content Stream', request);
       return createGenerateContentStream(request);
     }
   };

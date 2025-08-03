@@ -519,6 +519,7 @@ export const useGeminiStream = (
       userMessageTimestamp: number,
       signal: AbortSignal,
     ): Promise<StreamProcessingStatus> => {
+      console.log('-- Process gemini stream events');
       let geminiMessageBuffer = '';
       const toolCallRequests: ToolCallRequestInfo[] = [];
       for await (const event of stream) {

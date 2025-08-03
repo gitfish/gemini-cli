@@ -237,15 +237,6 @@ export class GeminiChat {
         const modelToUse = this.config.getModel() || DEFAULT_MODEL;
 
         // Prevent Flash model calls immediately after quota error
-        if (
-          this.config.getQuotaErrorOccurred() &&
-          modelToUse === DEFAULT_MODEL
-        ) {
-          throw new Error(
-            'Please submit a new query to continue with the Flash model.',
-          );
-        }
-
         return this.contentGenerator.generateContent({
           model: modelToUse,
           contents: requestContents,
@@ -253,7 +244,7 @@ export class GeminiChat {
         });
       };
 
-      response = await retryWithBackoff(apiCall);
+      response = await apiCall();
       const durationMs = Date.now() - startTime;
       await this._logApiResponse(
         durationMs,
@@ -349,11 +340,7 @@ export class GeminiChat {
         });
       };
 
-      // Note: Retrying streams can be complex. If generateContentStream itself doesn't handle retries
-      // for transient issues internally before yielding the async generator, this retry will re-initiate
-      // the stream. For simple 429/500 errors on initial call, this is fine.
-      // If errors occur mid-stream, this setup won't resume the stream; it will restart it.
-      const streamResponse = await retryWithBackoff(apiCall);
+      const streamResponse = await apiCall();
 
       // Resolve the internal tracking of send completion promise - `sendPromise`
       // for both success and failure response. The actual failure is still
@@ -422,6 +409,7 @@ export class GeminiChat {
    * @param content - The content to add to the history.
    */
   addHistory(content: Content): void {
+    console.log('-- Adding content to history:', content);
     this.history.push(content);
   }
   setHistory(history: Content[]): void {

@@ -218,6 +218,7 @@ export class Turn {
         }
 
         const text = getResponseText(resp);
+        console.log("-- Turn: Response Text:", text);
         if (text) {
           yield { type: GeminiEventType.Content, value: text };
         }

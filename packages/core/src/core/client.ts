@@ -364,6 +364,7 @@ export class GeminiClient {
 
     const resultStream = turn.run(request, signal);
     for await (const event of resultStream) {
+      console.log('-- Result stream event:', event);
       if (this.loopDetector.addAndCheck(event)) {
         yield { type: GeminiEventType.LoopDetected };
         return turn;
@@ -384,6 +385,7 @@ export class GeminiClient {
         this,
         signal,
       );
+      console.log('-- Next speaker check:', nextSpeakerCheck);
       if (nextSpeakerCheck?.next_speaker === 'model') {
         logFlashDecidedToContinue(
           this.config,

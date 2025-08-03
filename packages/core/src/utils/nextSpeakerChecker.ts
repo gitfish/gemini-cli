@@ -86,6 +86,8 @@ export async function checkNextSpeaker(
   const lastComprehensiveMessage =
     comprehensiveHistory[comprehensiveHistory.length - 1];
 
+  console.log('-- Last comprehensive message:', lastComprehensiveMessage);
+
   // If the last message is a user message containing only function_responses,
   // then the model should speak next.
   if (
