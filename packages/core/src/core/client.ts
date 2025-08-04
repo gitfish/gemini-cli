@@ -143,6 +143,7 @@ export class GeminiClient {
   }
 
   async addHistory(content: Content) {
+    console.log('-- Add history:', content);
     this.getChat().addHistory(content);
   }
 

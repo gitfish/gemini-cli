@@ -41,7 +41,7 @@ export const createLMSContentGenerator = (config: ContentGeneratorConfig) => {
         // Simulate token counting
         return {
             cachedContentTokenCount: 0,
-            totalTokens: 6,
+            totalTokens: 0,
         };
     };
 
