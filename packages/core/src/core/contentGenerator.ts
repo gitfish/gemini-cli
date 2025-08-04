@@ -66,8 +66,11 @@ export function createContentGeneratorConfig(
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT || undefined;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION || undefined;
 
+  console.log('-- Auth type:', authType);
+  console.log('-- Config model:', config.getModel());
+
   // Use runtime model from config if available; otherwise, fall back to parameter or default
-  const effectiveModel = config.getModel() || authType === AuthType.LMS ? DEFAULT_LMS_MODEL : DEFAULT_GEMINI_MODEL;
+  const effectiveModel = config.getModel() || (authType === AuthType.LMS ? DEFAULT_LMS_MODEL : DEFAULT_GEMINI_MODEL);
 
   const contentGeneratorConfig: ContentGeneratorConfig = {
     model: effectiveModel,

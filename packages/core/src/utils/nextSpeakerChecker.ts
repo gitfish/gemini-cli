@@ -57,6 +57,7 @@ export async function checkNextSpeaker(
   }
 
   const comprehensiveHistory = chat.getHistory();
+
   // If comprehensiveHistory is empty, there is no last message to check.
   // This case should ideally be caught by the curatedHistory.length check earlier,
   // but as a safeguard:

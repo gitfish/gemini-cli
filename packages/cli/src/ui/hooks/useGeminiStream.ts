@@ -532,7 +532,6 @@ export const useGeminiStream = (
       let geminiMessageBuffer = '';
       const toolCallRequests: ToolCallRequestInfo[] = [];
       for await (const event of stream) {
-        console.log('-- Process gemini stream event', event);
         switch (event.type) {
           case ServerGeminiEventType.Thought:
             setThought(event.value);
@@ -652,14 +651,12 @@ export const useGeminiStream = (
           abortSignal,
           prompt_id!,
         );
-        console.log('-- Submit Query - got stream for query', queryToSend);
+
         const processingStatus = await processGeminiStreamEvents(
           stream,
           userMessageTimestamp,
           abortSignal,
         );
-
-        console.log('-- Processing status:', processingStatus);
 
         if (processingStatus === StreamProcessingStatus.UserCancelled) {
           return;
