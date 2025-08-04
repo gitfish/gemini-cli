@@ -135,6 +135,8 @@ export async function main() {
   const workspaceRoot = process.cwd();
   const settings = loadSettings(workspaceRoot);
 
+  console.log('-- Merged Settings', settings.merged);
+
   await cleanupCheckpoints();
   if (settings.errors.length > 0) {
     for (const error of settings.errors) {
