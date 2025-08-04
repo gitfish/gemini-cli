@@ -4,10 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Buffer } from 'buffer';
-import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-
 import {
   StartSessionEvent,
   EndSessionEvent,
@@ -122,116 +118,9 @@ export class ClearcutLogger {
     if (this.config?.getDebugMode()) {
       console.log('Flushing log events to Clearcut.');
     }
-    const eventsToSend = [...this.events];
-    if (eventsToSend.length === 0) {
-      return {};
-    }
+    this.events.splice(0, this.events.length); // Clear the events after flushing.
+    return {};
 
-    const flushFn = () =>
-      new Promise<Buffer>((resolve, reject) => {
-        const request = [
-          {
-            log_source_name: 'CONCORD',
-            request_time_ms: Date.now(),
-            log_event: eventsToSend,
-          },
-        ];
-        const body = safeJsonStringify(request);
-        const options = {
-          hostname: 'play.googleapis.com',
-          path: '/log',
-          method: 'POST',
-          headers: { 'Content-Length': Buffer.byteLength(body) },
-        };
-        const bufs: Buffer[] = [];
-        const req = https.request(
-          {
-            ...options,
-            agent: this.getProxyAgent(),
-          },
-          (res) => {
-            if (
-              res.statusCode &&
-              (res.statusCode < 200 || res.statusCode >= 300)
-            ) {
-              const err: HttpError = new Error(
-                `Request failed with status ${res.statusCode}`,
-              );
-              err.status = res.statusCode;
-              res.resume();
-              return reject(err);
-            }
-            res.on('data', (buf) => bufs.push(buf));
-            res.on('end', () => resolve(Buffer.concat(bufs)));
-          },
-        );
-        req.on('error', reject);
-        req.end(body);
-      });
-
-    try {
-      const responseBuffer = await retryWithBackoff(flushFn, {
-        maxAttempts: 3,
-        initialDelayMs: 200,
-        shouldRetry: (err: unknown) => {
-          if (!(err instanceof Error)) return false;
-          const status = (err as HttpError).status as number | undefined;
-          // If status is not available, it's likely a network error
-          if (status === undefined) return true;
-
-          // Retry on 429 (Too many Requests) and 5xx server errors.
-          return status === 429 || (status >= 500 && status < 600);
-        },
-      });
-
-      this.events.splice(0, eventsToSend.length);
-      this.last_flush_time = Date.now();
-      return this.decodeLogResponse(responseBuffer) || {};
-    } catch (error) {
-      if (this.config?.getDebugMode()) {
-        console.error('Clearcut flush failed after multiple retries.', error);
-      }
-      return {};
-    }
-  }
-
-  // Visible for testing. Decodes protobuf-encoded response from Clearcut server.
-  decodeLogResponse(buf: Buffer): LogResponse | undefined {
-    // TODO(obrienowen): return specific errors to facilitate debugging.
-    if (buf.length < 1) {
-      return undefined;
-    }
-
-    // The first byte of the buffer is `field<<3 | type`. We're looking for field
-    // 1, with type varint, represented by type=0. If the first byte isn't 8, that
-    // means field 1 is missing or the message is corrupted. Either way, we return
-    // undefined.
-    if (buf.readUInt8(0) !== 8) {
-      return undefined;
-    }
-
-    let ms = BigInt(0);
-    let cont = true;
-
-    // In each byte, the most significant bit is the continuation bit. If it's
-    // set, we keep going. The lowest 7 bits, are data bits. They are concatenated
-    // in reverse order to form the final number.
-    for (let i = 1; cont && i < buf.length; i++) {
-      const byte = buf.readUInt8(i);
-      ms |= BigInt(byte & 0x7f) << BigInt(7 * (i - 1));
-      cont = (byte & 0x80) !== 0;
-    }
-
-    if (cont) {
-      // We have fallen off the buffer without seeing a terminating byte. The
-      // message is corrupted.
-      return undefined;
-    }
-
-    const returnVal = {
-      nextRequestWaitMs: Number(ms),
-    };
-    return returnVal;
   }
 
   logStartSessionEvent(event: StartSessionEvent): void {
@@ -587,18 +476,6 @@ export class ClearcutLogger {
     this.flushToClearcut().catch((error) => {
       console.debug('Error flushing to Clearcut:', error);
     });
-  }
-
-  getProxyAgent() {
-    const proxyUrl = this.config?.getProxy();
-    if (!proxyUrl) return undefined;
-    // undici which is widely used in the repo can only support http & https proxy protocol,
-    // https://github.com/nodejs/undici/issues/2224
-    if (proxyUrl.startsWith('http')) {
-      return new HttpsProxyAgent(proxyUrl);
-    } else {
-      throw new Error('Unsupported proxy type');
-    }
   }
 
   shutdown() {
