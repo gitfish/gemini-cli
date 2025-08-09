@@ -66,9 +66,6 @@ export function createContentGeneratorConfig(
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT || undefined;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION || undefined;
 
-  console.log('-- Auth type:', authType);
-  console.log('-- Config model:', config.getModel());
-
   // Use runtime model from config if available; otherwise, fall back to parameter or default
   const effectiveModel = config.getModel() || (authType === AuthType.LMS ? DEFAULT_LMS_MODEL : DEFAULT_GEMINI_MODEL);
 
@@ -149,6 +146,7 @@ export async function createContentGenerator(
   }
 
   if (config.authType === AuthType.LMS) {
+    // if the model is currently a gemini model, we switch to an LMS model
     return createLMSContentGenerator(config);
   }
 
