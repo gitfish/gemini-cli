@@ -1,13 +1,14 @@
-import { Content, CountTokensParameters, CountTokensResponse, EmbedContentParameters, EmbedContentResponse, FinishReason, GenerateContentParameters, GenerateContentResponse, Part } from "@google/genai";
-import { ContentGeneratorConfig } from "../core/contentGenerator.js";
+import { Content, ContentListUnion, ContentUnion, CountTokensParameters, CountTokensResponse, EmbedContentParameters, EmbedContentResponse, FinishReason, GenerateContentParameters, GenerateContentResponse, Part } from "@google/genai";
+import { ContentGenerator, ContentGeneratorConfig } from "../core/contentGenerator.js";
 import { UserTierId } from "../code_assist/types.js";
-import { LMStudioClient, LLM, ChatLike } from "@lmstudio/sdk";
+import { LMStudioClient, LLM, ChatLike, Chat, ChatMessageInput } from "@lmstudio/sdk";
 import { partToString } from "../utils/partUtils.js";
 
-export const createLMSContentGenerator = (config: ContentGeneratorConfig) => {
+export const createLMSContentGenerator = async (config: ContentGeneratorConfig): Promise<ContentGenerator> => {
     console.log('-- LMS: Create Content Generator with config:', config);
 
     const client = new LMStudioClient();
+    const chat = Chat.empty();
 
     const modelState: {
         name?: string;
@@ -107,9 +108,11 @@ export const createLMSContentGenerator = (config: ContentGeneratorConfig) => {
         };
     };
 
-    const getRequestChats = (request: GenerateContentParameters): ChatLike => {
-        const arr = Array.isArray(request.contents) ? request.contents : [request.contents];
-        return arr.flatMap(item => {
+    let init = true;
+
+    const getInputsForContents = (contents: ContentListUnion): ChatMessageInput[] => {
+        const arr = Array.isArray(contents) ? contents : [contents];
+        return arr.map(item => {
             if (typeof item === 'string') {
                 return { text: item, role: 'user' };
             }
@@ -123,23 +126,47 @@ export const createLMSContentGenerator = (config: ContentGeneratorConfig) => {
             if ((<Part>item).text) {
                 return { role: 'user', text: partToString(<Part>item) };
             }
-            return [];
-        }).filter(p => p !== undefined);
+        }).filter(r => r !== undefined);
+    };
+
+    const getInputs = (request: GenerateContentParameters): ChatMessageInput[] => {
+        return getInputsForContents(request.contents);
+    };
+
+    const getUserInputs = (request: GenerateContentParameters): ChatMessageInput[] => {
+        return getInputs(request).filter(r => r.role === 'user');
+    }
+
+    const appendChats = (request: GenerateContentParameters) => {
+        const userInputs = getUserInputs(request);
+        if (init) {
+            init = false;
+            if (request.config?.systemInstruction) {
+                const inputs = getInputsForContents(request.config.systemInstruction);
+                for (const input of inputs) {
+                    chat.append('user', input.content!);
+                }
+            }
+            // we also append all user inputs
+            for (const userInput of userInputs) {
+                chat.append(userInput);
+            }
+        } else {
+            chat.append(userInputs[userInputs.length - 1]);
+        }
     };
 
     const generateContentStream = async (request: GenerateContentParameters, userPromptId: string) => {
-        console.log('-- LMS: Create Generate Content Stream', userPromptId);
-
         const m = await getLMSModel(request.model);
-        console.log('-- Using LMS Model: ', m.displayName);
-        const chats = getRequestChats(request);
 
-        console.log('-- Chats', chats);
+        // append chats
+        appendChats(request);
 
         return async function*() {
-            for await (const item of m.respond(chats)) {
+            const prediction = m.respond(chat);
+            for await (const { content } of prediction) {
                 yield {
-                    text: item.content,
+                    text: content,
                     codeExecutionResult: undefined,
                     functionCalls: undefined,
                     data: undefined,
@@ -150,15 +177,19 @@ export const createLMSContentGenerator = (config: ContentGeneratorConfig) => {
                                 role: 'model',
                                 parts: [
                                     {
-                                        text: item.content,
+                                        text: content,
                                         thought: false
                                     }
                                 ]
                             }
                         }
                     ]
-                }
+                };
             }
+     
+            const result = await prediction;
+            chat.append(result.content);
+
             /*
             yield thought;
             yield content;

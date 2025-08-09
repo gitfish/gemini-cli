@@ -51,8 +51,7 @@ import {
 import { ClearcutLogger } from '../telemetry/clearcut-logger/clearcut-logger.js';
 
 function isThinkingSupported(model: string) {
-  if (model.startsWith('gemini-2.5')) return true;
-  return false;
+  return model?.startsWith('gemini-2.5') ? true : false;
 }
 
 /**

@@ -79,7 +79,7 @@ export async function parseArguments(): Promise<CliArgs> {
       alias: 'm',
       type: 'string',
       description: `Model`,
-      default: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+      default: process.env.GEMINI_MODEL || process.env.LMS_MODEL,
     })
     .option('prompt', {
       alias: 'p',
