@@ -114,17 +114,17 @@ export const createLMSContentGenerator = async (config: ContentGeneratorConfig):
         const arr = Array.isArray(contents) ? contents : [contents];
         return arr.map(item => {
             if (typeof item === 'string') {
-                return { text: item, role: 'user' };
+                return { content: item, role: 'user' };
             }
             if ((<Content>item).parts) {
                 const c = <Content>item;
                 return {
                     role: <any>(c.role === 'model' ? 'assistant' : c.role || 'user'),
-                    text: partToString((<Content>item).parts!)
+                    content: partToString((<Content>item).parts!)
                 };
             }
             if ((<Part>item).text) {
-                return { role: 'user', text: partToString(<Part>item) };
+                return { role: 'user', content: partToString(<Part>item) };
             }
         }).filter(r => r !== undefined);
     };
@@ -139,14 +139,18 @@ export const createLMSContentGenerator = async (config: ContentGeneratorConfig):
 
     const appendChats = (request: GenerateContentParameters) => {
         const userInputs = getUserInputs(request);
+        console.log('-- Append User Inputs', JSON.stringify(userInputs, null, 2));
         if (init) {
             init = false;
+            /*
             if (request.config?.systemInstruction) {
                 const inputs = getInputsForContents(request.config.systemInstruction);
+                console.log('-- System instruction inputs', JSON.stringify(inputs, null, 2));
                 for (const input of inputs) {
                     chat.append('user', input.content!);
                 }
             }
+            */
             // we also append all user inputs
             for (const userInput of userInputs) {
                 chat.append(userInput);
@@ -163,7 +167,7 @@ export const createLMSContentGenerator = async (config: ContentGeneratorConfig):
         appendChats(request);
 
         return async function*() {
-            const prediction = m.respond(chat);
+            const prediction = m.respond(chat, { signal: request.config?.abortSignal });
             for await (const { content } of prediction) {
                 yield {
                     text: content,
