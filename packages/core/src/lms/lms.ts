@@ -1,42 +1,17 @@
 import { Content, ContentListUnion, CountTokensParameters, CountTokensResponse, EmbedContentParameters, EmbedContentResponse, FinishReason, GenerateContentParameters, GenerateContentResponse, Part } from "@google/genai";
 import { ContentGenerator, ContentGeneratorConfig } from "../core/contentGenerator.js";
 import { UserTierId } from "../code_assist/types.js";
-import { LMStudioClient, LLM, Chat, ChatMessageInput } from "@lmstudio/sdk";
+import { LMStudioClient, LLM, Chat, ChatMessageInput, tool as lmsTool, Tool as LMSTool } from "@lmstudio/sdk";
 import { partToString } from "../utils/partUtils.js";
 import { Config } from '../config/config.js';
 import { on, EventEmitter } from "events";
+import { Tool } from "../tools/tools.js";
+import { convertJsonSchemaToZod } from 'zod-from-json-schema';
 
-export const createLMSContentGenerator = async (
-    config: ContentGeneratorConfig,
-    gcConfig: Config,
-    sessionId?: string): Promise<ContentGenerator> => {
-    
-    const client = new LMStudioClient();
-    const chat = Chat.empty();
-
-    const modelState: {
-        name?: string;
-        p?: Promise<LLM>;
-    } = {};
-
-    const getLMSModel = async (name: string): Promise<LLM> => {
-        if (modelState.name !== name) {
-            if (modelState.p) {
-                await (await modelState.p).unload();
-            }
-            modelState.name = name;
-            modelState.p = client.llm.model(name);
-        }
-        return modelState.p!;
-    };
-
-    const toolRegistry = await gcConfig.getToolRegistry();
-
-    for (const t of toolRegistry.getAllTools()) {
-        console.log('-- Tool: ' + t.displayName + ' - ' + t.description);
-    }
-
-    const thought: GenerateContentResponse = {
+/**
+ * Sample responses
+ * 
+ * const thought: GenerateContentResponse = {
         text: 'This is a thought part.',
         codeExecutionResult: undefined,
         functionCalls: undefined,
@@ -91,6 +66,49 @@ export const createLMSContentGenerator = async (
             }
         ]
     }
+ * 
+ */
+
+export const createLMSTool = (t: Tool, signal: AbortSignal): LMSTool => {
+    try {
+        return lmsTool({
+            name: t.name,
+            description: t.description,
+            parameters: t.schema.parametersJsonSchema ? <any>convertJsonSchemaToZod(<any>t.schema.parametersJsonSchema) : undefined,
+            implementation: (params) => {
+                console.log(`-- Tool call ${t.name} Params`, params)
+                return t.execute(params, signal)
+            }
+        });
+    } catch(err) {
+        console.log(err);
+        throw err;
+    }
+}
+
+export const createLMSContentGenerator = async (
+    config: ContentGeneratorConfig,
+    gcConfig: Config,
+    sessionId?: string): Promise<ContentGenerator> => {
+    
+    const client = new LMStudioClient();
+    const chat = Chat.empty();
+
+    const modelState: {
+        name?: string;
+        p?: Promise<LLM>;
+    } = {};
+
+    const getLMSModel = async (name: string): Promise<LLM> => {
+        if (modelState.name !== name) {
+            if (modelState.p) {
+                await (await modelState.p).unload();
+            }
+            modelState.name = name;
+            modelState.p = client.llm.model(name);
+        }
+        return modelState.p!;
+    };
 
     const generateContent = async (request: GenerateContentParameters, userPromptId: string) => {
         console.log('-- LMS: Generate Content', userPromptId);
@@ -148,7 +166,6 @@ export const createLMSContentGenerator = async (
 
     const appendChats = (request: GenerateContentParameters) => {
         const userInputs = getUserInputs(request);
-        console.log('-- Append User Inputs', JSON.stringify(userInputs, null, 2));
         if (init) {
             init = false;
             /* look at implementing this in a different way
@@ -165,6 +182,7 @@ export const createLMSContentGenerator = async (
                 chat.append(userInput);
             }
         } else {
+            console.log('-- Appending chat', userInputs[userInputs.length - 1]);
             chat.append(userInputs[userInputs.length - 1]);
         }
     };
@@ -174,22 +192,76 @@ export const createLMSContentGenerator = async (
         
         const m = await getLMSModel(request.model);
 
+        // add tools from the registry to lms tools
+        const toolRegistry = await gcConfig.getToolRegistry();
+
+        const lmsTools: LMSTool[] = toolRegistry.getAllTools().map(t => {
+            return createLMSTool(t, signal!);
+        });
+
+        console.log('-- Tool count', lmsTools.length);
+
         // append chats
         appendChats(request);
+
+        const modelText = (text: string, thought?: boolean) => {
+            return {
+                text,
+                codeExecutionResult: undefined,
+                functionCalls: undefined,
+                data: undefined,
+                executableCode: undefined,
+                candidates: [
+                    {
+                        content: {
+                            role: 'model',
+                            parts: [
+                                {
+                                    text,
+                                    thought
+                                }
+                            ]
+                        }
+                    }
+                ]
+            };
+        };
 
         return async function*() {
             const r = new EventEmitter();
 
-            m.act(chat, [], {
+            m.act(chat, lmsTools, {
                 signal,
                 onMessage(message) {
+                    console.log('-- Append model Message', JSON.stringify(message));
                     chat.append(message)
                 },
                 onPredictionFragment(f) {
+                    console.log('-- Prediction fragment', f);
+                    r.emit('content', modelText(f.content));
+                },
+                onToolCallRequestStart() {
+                    console.log('-- On tool call request start');
+                    r.emit('content', modelText('thinking about using a tool', true));
+                },
+                onToolCallRequestNameReceived(_roundIndex, _callId, name) {
+                    console.log('-- On tool call request name received', name);
+                    r.emit('content', modelText(name, true));
+                },
+                onToolCallRequestArgumentFragmentGenerated(_roundIndex, _callId, content) {
+                    r.emit('content', modelText(content, true));
+                },
+                onToolCallRequestFinalized(_roundIndex, _callId, info) {
                     r.emit('content', {
-                        text: f.content,
+                        text: info.rawContent,
                         codeExecutionResult: undefined,
-                        functionCalls: undefined,
+                        functionCalls: [
+                            {
+                                id: info.toolCallRequest.id,
+                                args: info.toolCallRequest.arguments,
+                                name: info.toolCallRequest.name
+                            }
+                        ],
                         data: undefined,
                         executableCode: undefined,
                         candidates: [
@@ -198,8 +270,8 @@ export const createLMSContentGenerator = async (
                                     role: 'model',
                                     parts: [
                                         {
-                                            text: f.content,
-                                            thought: false // maybe this is considered a thought
+                                            text: info.rawContent,
+                                            thought: false
                                         }
                                     ]
                                 }
@@ -208,10 +280,9 @@ export const createLMSContentGenerator = async (
                     });
                 }
             }).then(() => {
-                console.log('-- Emit End');
                 r.emit('end');
             }).catch(err => {
-                console.log('-- Emit Error');
+                console.error(err);
                 r.emit('error', err);
             });
 
@@ -221,7 +292,6 @@ export const createLMSContentGenerator = async (
                     yield item;
                 }
             }
-            console.log('-- Done');
         }();
     };
 
