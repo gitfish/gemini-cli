@@ -147,7 +147,7 @@ export async function createContentGenerator(
 
   if (config.authType === AuthType.LMS) {
     // if the model is currently a gemini model, we switch to an LMS model
-    return createLMSContentGenerator(config);
+    return createLMSContentGenerator(config, gcConfig, sessionId);
   }
 
   throw new Error(
