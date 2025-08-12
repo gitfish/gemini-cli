@@ -1,4 +1,4 @@
-import { Content, ContentListUnion, CountTokensParameters, CountTokensResponse, EmbedContentParameters, EmbedContentResponse, FinishReason, GenerateContentParameters, GenerateContentResponse, Part } from "@google/genai";
+import { Content, ContentListUnion, CountTokensParameters, CountTokensResponse, EmbedContentParameters, EmbedContentResponse, FinishReason, GenerateContentParameters, GenerateContentResponse, Part, Schema, Type } from "@google/genai";
 import { ContentGenerator, ContentGeneratorConfig } from "../core/contentGenerator.js";
 import { UserTierId } from "../code_assist/types.js";
 import { LMStudioClient, LLM, Chat, ChatMessageInput, tool as lmsTool, Tool as LMSTool } from "@lmstudio/sdk";
@@ -6,53 +6,11 @@ import { partToString } from "../utils/partUtils.js";
 import { Config } from '../config/config.js';
 import { on, EventEmitter } from "events";
 import { Tool } from "../tools/tools.js";
-import { convertJsonSchemaToZod } from 'zod-from-json-schema';
+import { z } from 'zod';
 
 /**
  * Sample responses
  * 
- * const thought: GenerateContentResponse = {
-        text: 'This is a thought part.',
-        codeExecutionResult: undefined,
-        functionCalls: undefined,
-        data: undefined,
-        executableCode: undefined,
-        candidates: [
-            {
-                content: {
-                    role: 'model',
-                    parts: [
-                        {
-                            text: 'This is a thought part.',
-                            thought: true
-                        }
-                    ]
-                }
-            }
-        ]
-    };
-
-    const content: GenerateContentResponse = {
-        text: 'This is a response part.',
-        codeExecutionResult: undefined,
-        functionCalls: undefined,
-        data: undefined,
-        executableCode: undefined,
-        candidates: [
-            {
-                content: {
-                    role: 'model',
-                    parts: [
-                        {
-                            text: 'This is a response part.',
-                            thought: false
-                        }
-                    ]
-                }
-            }
-        ]
-    };
-
     const finish: GenerateContentResponse = {
         text: 'Finished response.',
         codeExecutionResult: undefined,
@@ -69,12 +27,55 @@ import { convertJsonSchemaToZod } from 'zod-from-json-schema';
  * 
  */
 
+const toZodObjectRaw = (s: Schema): { [key: string]: z.ZodType } => {
+    const r: { [key: string]: z.ZodType } = {};
+    for (const [key, value] of Object.entries(s.properties!)) {
+        r[key] = toZod(value, !s.required?.includes(key) ? true : false);
+    }
+    return r;
+};
+
+const toZod = (s: Schema, optional?: boolean): z.ZodType => {
+    const m = () => {
+        if (s.type === Type.OBJECT) {
+            return z.object(toZodObjectRaw(s));
+        }
+        if (s.type === Type.ARRAY) {
+            return z.array(toZod(s.items!));
+        }
+        if (s.type === Type.BOOLEAN) {
+            return z.boolean();
+        }
+        if (s.type === Type.INTEGER || s.type === Type.NUMBER) {
+            return z.number();
+        }
+        if (s.type === Type.STRING) {
+            return z.string();
+        }
+        throw new Error(`Unable to resolve type: ${s.type}`);
+    }
+    const r = m();
+    if (optional) {
+        r.optional();
+    }
+
+    return r;
+};
+
+export const createLMSParamSchema = (t: Tool) => {
+    const paramSchema = t.schema.parameters;
+    if (!paramSchema) {
+        return <any>{};
+    }
+    return toZodObjectRaw(paramSchema);
+};
+
 export const createLMSTool = (t: Tool, signal: AbortSignal): LMSTool => {
     try {
         return lmsTool({
             name: t.name,
             description: t.description,
-            parameters: t.schema.parametersJsonSchema ? <any>convertJsonSchemaToZod(<any>t.schema.parametersJsonSchema) : undefined,
+            parameters: createLMSParamSchema(t),
             implementation: (params) => {
                 console.log(`-- Tool call ${t.name} Params`, params)
                 return t.execute(params, signal)
@@ -105,14 +106,16 @@ export const createLMSContentGenerator = async (
                 await (await modelState.p).unload();
             }
             modelState.name = name;
-            modelState.p = client.llm.model(name);
+            modelState.p = client.llm.model(name, {
+                config: {
+                    contextLength: 6144
+                }
+            });
         }
         return modelState.p!;
     };
 
     const generateContent = async (request: GenerateContentParameters, userPromptId: string) => {
-        console.log('-- LMS: Generate Content', userPromptId);
-        
         // this is called to determine the next speaker - we're always going to return user for it
         return {
             text: `{ "next_speaker": "user" }`,
@@ -164,11 +167,11 @@ export const createLMSContentGenerator = async (
         return getInputs(request).filter(r => r.role === 'user');
     }
 
-    const appendChats = (request: GenerateContentParameters) => {
+    /*
+    const appendChats = async (request: GenerateContentParameters) => {
         const userInputs = getUserInputs(request);
         if (init) {
             init = false;
-            /* look at implementing this in a different way
             if (request.config?.systemInstruction) {
                 const inputs = getInputsForContents(request.config.systemInstruction);
                 console.log('-- System instruction inputs', JSON.stringify(inputs, null, 2));
@@ -176,7 +179,6 @@ export const createLMSContentGenerator = async (
                     chat.append('user', input.content!);
                 }
             }
-            */
             // we also append all user inputs
             for (const userInput of userInputs) {
                 chat.append(userInput);
@@ -186,6 +188,7 @@ export const createLMSContentGenerator = async (
             chat.append(userInputs[userInputs.length - 1]);
         }
     };
+    */
 
     const generateContentStream = async (request: GenerateContentParameters, _userPromptId: string) => {
         const signal = request.config?.abortSignal;
@@ -198,11 +201,6 @@ export const createLMSContentGenerator = async (
         const lmsTools: LMSTool[] = toolRegistry.getAllTools().map(t => {
             return createLMSTool(t, signal!);
         });
-
-        console.log('-- Tool count', lmsTools.length);
-
-        // append chats
-        appendChats(request);
 
         const modelText = (text: string, thought?: boolean) => {
             return {
@@ -230,64 +228,103 @@ export const createLMSContentGenerator = async (
         return async function*() {
             const r = new EventEmitter();
 
-            m.act(chat, lmsTools, {
-                signal,
-                onMessage(message) {
-                    console.log('-- Append model Message', JSON.stringify(message));
-                    chat.append(message)
-                },
-                onPredictionFragment(f) {
-                    console.log('-- Prediction fragment', f);
-                    r.emit('content', modelText(f.content));
-                },
-                onToolCallRequestStart() {
-                    console.log('-- On tool call request start');
-                    r.emit('content', modelText('thinking about using a tool', true));
-                },
-                onToolCallRequestNameReceived(_roundIndex, _callId, name) {
-                    console.log('-- On tool call request name received', name);
-                    r.emit('content', modelText(name, true));
-                },
-                onToolCallRequestArgumentFragmentGenerated(_roundIndex, _callId, content) {
-                    r.emit('content', modelText(content, true));
-                },
-                onToolCallRequestFinalized(_roundIndex, _callId, info) {
-                    r.emit('content', {
-                        text: info.rawContent,
-                        codeExecutionResult: undefined,
-                        functionCalls: [
-                            {
-                                id: info.toolCallRequest.id,
-                                args: info.toolCallRequest.arguments,
-                                name: info.toolCallRequest.name
-                            }
-                        ],
-                        data: undefined,
-                        executableCode: undefined,
-                        candidates: [
-                            {
-                                content: {
-                                    role: 'model',
-                                    parts: [
-                                        {
-                                            text: info.rawContent,
-                                            thought: false
-                                        }
-                                    ]
-                                }
-                            }
-                        ]
-                    });
+            const asyncIterator = on(r, 'content', { signal, close: ['end'] });
+
+            const createEvents = async () => {
+
+                const userInputs = getUserInputs(request);
+
+                const chatInit = async (input: ChatMessageInput) => {
+                    chat.append(input);
+                    for await (const { content } of m.respond(chat, { signal })) {
+                        r.emit('content', modelText(content));
+                    }
+                };
+
+                if (init) {
+                    init = false;
+
+                    /* look at implementing this in a different way
+                    if (request.config?.systemInstruction) {
+                        const inputs = getInputsForContents(request.config.systemInstruction);
+                        console.log('-- System instruction inputs', JSON.stringify(inputs, null, 2));
+                        for (const input of inputs) {
+                            chat.append('user', input.content!);
+                        }
+                    }
+                    */
+
+                    if (userInputs.length > 1) {
+                        for (const userInput of userInputs.slice(0, userInputs.length - 1)) {
+                            await chatInit(userInput);
+                        }
+                    }
                 }
-            }).then(() => {
+
+                chat.append(userInputs[userInputs.length - 1]);
+
+                await m.act(chat, lmsTools, {
+                    signal,
+                    onMessage(message) {
+                        chat.append(message);
+                    },
+                    onPredictionFragment(f) {
+                        r.emit('content', modelText(f.content));
+                    },
+                    onToolCallRequestStart() {
+                        console.log('-- On tool call request start');
+                        r.emit('content', modelText('thinking about using a tool', true));
+                    },
+                    onToolCallRequestNameReceived(_roundIndex, _callId, name) {
+                        console.log('-- On tool call request name received', name);
+                        r.emit('content', modelText(name, true));
+                    },
+                    onToolCallRequestDequeued(_roundIndex, _callId) {
+                        console.log('-- On Tool Call Request Dequeued');
+                    },
+                    onToolCallRequestFinalized(_roundIndex, _callId, info) {
+                        console.log('-- On tool request finalized', info);
+                        r.emit('content', {
+                            text: info.rawContent,
+                            codeExecutionResult: undefined,
+                            functionCalls: [
+                                {
+                                    id: info.toolCallRequest.id,
+                                    args: info.toolCallRequest.arguments,
+                                    name: info.toolCallRequest.name
+                                }
+                            ],
+                            data: undefined,
+                            executableCode: undefined,
+                            candidates: [
+                                {
+                                    content: {
+                                        role: 'model',
+                                        parts: [
+                                            {
+                                                text: info.rawContent,
+                                                thought: false
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        });
+                    },
+                    onToolCallRequestFailure(_roundIndex, _callId, error) {
+                        console.log('-- On Tool Call Request Failure', error);
+                    }
+                });
+            };
+
+            createEvents().then(() => {
                 r.emit('end');
             }).catch(err => {
-                console.error(err);
                 r.emit('error', err);
             });
 
             // async iterate over our emitter
-            for await (const items of on(r, 'content', { signal, close: ['end'] })) {
+            for await (const items of asyncIterator) {
                 for (const item of items) {
                     yield item;
                 }
@@ -296,7 +333,6 @@ export const createLMSContentGenerator = async (
     };
 
     const countTokens = async (request: CountTokensParameters): Promise<CountTokensResponse> => {
-        console.log('-- LMS: Count Tokens');
         // Simulate token counting
         return {
             cachedContentTokenCount: 0,
@@ -305,7 +341,6 @@ export const createLMSContentGenerator = async (
     };
 
     const embedContent = async (request: EmbedContentParameters): Promise<EmbedContentResponse> => {
-        console.log('-- LMS: Embed Content');
         // Simulate content embedding
         return {
             embeddings: [],
